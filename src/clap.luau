@@ -5,6 +5,7 @@ local match = require("../utils/match")
 local Utils = require("../utils/misc")
 local assertEq = Utils.AssertEq
 local trim = Utils.StringTrim
+local startsWith = Utils.StringStartsWith
 
 local Clap = {}
 
@@ -14,10 +15,22 @@ Clap.Interface = {}
 
 Clap.Opt = {}
 type ClapOptType = "string" | "number" | "bool" | "any"
-type ClapOpt = { name: string, shortName: string?, type: ClapOptType, description: string? } & typeof(Clap.Opt)
+type ClapOpt = {
+	name: string,
+	shortName: string?,
+	type: ClapOptType,
+	description: string?,
+	handler: ((string | number | boolean | any) -> string?)?,
+} & typeof(Clap.Opt)
 
 function Clap.Opt.type(self: ClapOpt, type: ClapOptType): ClapOpt
 	self.type = type
+
+	return self
+end
+
+function Clap.Opt.handle(self: ClapOpt, handler: ((...any) -> string?)?): ClapOpt
+	self.handler = handler
 
 	return self
 end
@@ -213,29 +226,56 @@ function __version(self)
 	end
 end
 
+-- Luau generics SUCK, so we can't take a generic and need to use a union instead
+function __assertHandler(tbl)
+	for _, sub: ClapOpt | ClapProto in tbl do
+		if not sub.isParent then
+			assertEq(typeof(sub.handler), "function", `[__CLAP] field \`handler\` is mandatory for \`{sub.name}\``)
+		end
+	end
+end
+
+function __invokeHandler(args, type, handler: ((any | boolean | number | string) -> string?)?)
+	local val = trim(args[2]) or ""
+
+	local casted = match(type, {
+		string = function()
+			return val :: string
+		end,
+		number = function()
+			return val :: number
+		end,
+		bool = function()
+			return val :: boolean
+		end,
+		any = function()
+			return val :: any
+		end,
+
+		_ = function()
+			return val
+		end,
+	})
+
+	local handlerNotNil = handler :: (any | boolean | number | string) -> string?
+	return handlerNotNil(casted)
+end
+
 function Clap.Prototype.run(self: ClapProto)
-	if self.OptElseHelp == nil then
-		self.OptElseHelp = false
+	if self.optElseHelp == nil then
+		self.optElseHelp = false
 	end
 
 	if self.subcommandIsRequired == nil then
 		self.subcommandIsRequired = true
 	end
 
-	if #self.subcommands ~= 0 then
-		for _, subcommand: ClapProto in ipairs(self.subcommands) do
-			if not subcommand.isParent then
-				assertEq(
-					typeof(subcommand.handler),
-					"function",
-					`[__CLAP] field \`handler\` is mandatory for subcommand \`{subcommand.name}\``
-				)
-			end
-		end
+	if #self.subcommands ~= 0 and #self.opts ~= 0 then
+		__assertHandler(self.subcommands)
+		__assertHandler(self.opts)
 	end
 
 	assertEq(typeof(self.name), "string", "[__CLAP] field `name` is mandatory!")
-	-- make sure every subcommand has an onRun
 
 	local args = table.clone(Process.args)
 
@@ -251,6 +291,45 @@ function Clap.Prototype.run(self: ClapProto)
 
 		["_"] = function(cmd: string)
 			local commandExists: boolean
+			local optExists: boolean
+
+			if #cmd == 2 then
+				-- Arg is a switch
+				local switch = cmd:match("-(%a)")
+
+				for _, opt: ClapOpt in ipairs(self.opts) do
+					if opt.shortName == switch then
+						optExists = true
+
+						local ret = __invokeHandler(args, opt.type, opt.handler)
+
+						if ret ~= nil then
+							print(ret)
+						end
+
+						return
+					end
+				end
+			end
+
+			if #cmd > 2 and startsWith(cmd, "-") then
+				-- Arg is a flag
+				local flag = cmd:match("--(%a+)")
+
+				for _, opt: ClapOpt in ipairs(self.opts) do
+					if opt.name == flag then
+						optExists = true
+
+						local ret = __invokeHandler(args, opt.type, opt.handler)
+
+						if ret ~= nil then
+							print(ret)
+						end
+
+						return
+					end
+				end
+			end
 
 			for _, subCmd: ClapProto in ipairs(self.subcommands) do
 				if subCmd.name == cmd then
@@ -272,7 +351,7 @@ function Clap.Prototype.run(self: ClapProto)
 				return
 			end
 
-			if not commandExists and not cmdIsEmpty then
+			if not (commandExists and optExists and cmdIsEmpty) then
 				print(
 					Stdio.style("bold")
 						.. Stdio.color("red")
