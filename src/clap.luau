@@ -28,10 +28,20 @@ function Clap.Opt.about(self: ClapOpt, desc: string): ClapOpt
 	return self
 end
 
-function Clap.Opt.new(name: string, includeShortName: boolean)
+function Clap.Opt.new(name: string, shortName: (boolean | string)?)
+	local shortSwitch: string? = nil
+
+	if typeof(shortName) == "string" then
+		shortSwitch = shortName
+	end
+
+	if typeof(shortName) == "boolean" and shortName == true then
+		shortSwitch = name:sub(1, 1)
+	end
+
 	return setmetatable({
 		name = name,
-		shortName = (includeShortName and name:sub(1, 1)) or nil,
+		shortName = shortSwitch,
 	}, {
 		__index = Clap.Opt,
 	})
@@ -214,11 +224,13 @@ function Clap.Prototype.run(self: ClapProto)
 
 	if #self.subcommands ~= 0 then
 		for _, subcommand: ClapProto in ipairs(self.subcommands) do
-			assertEq(
-				typeof(subcommand.handler),
-				"function",
-				`[__CLAP] field \`handler\` is mandatory for subcommand \`{subcommand.name}\``
-			)
+			if not subcommand.isParent then
+				assertEq(
+					typeof(subcommand.handler),
+					"function",
+					`[__CLAP] field \`handler\` is mandatory for subcommand \`{subcommand.name}\``
+				)
+			end
 		end
 	end
 
@@ -243,9 +255,13 @@ function Clap.Prototype.run(self: ClapProto)
 			for _, subCmd: ClapProto in ipairs(self.subcommands) do
 				if subCmd.name == cmd then
 					commandExists = true
-					table.remove(args, 1);
+					table.remove(args, 1)
 
-					(subCmd.handler :: (...any) -> string?)(args) -- we should probs remove the first Opt lol
+					local ret = (subCmd.handler :: (...any) -> string?)(args)
+
+					if ret ~= nil then
+						print(ret)
+					end
 				end
 			end
 
