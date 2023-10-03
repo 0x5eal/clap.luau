@@ -265,8 +265,26 @@ function Clap.Prototype.run(self: ClapProto)
 				end
 			end
 
-			if not commandExists and self.optElseHelp then
+			local cmdIsEmpty = (cmd == "" or #cmd == 0)
+
+			if cmdIsEmpty and self.optElseHelp then
 				self:showHelp()
+				return
+			end
+
+			if not commandExists and not cmdIsEmpty then
+				print(
+					Stdio.style("bold")
+						.. Stdio.color("red")
+						.. "error: "
+						.. Stdio.color("reset")
+						.. `unexpected argument '{Stdio.color("yellow") .. cmd .. Stdio.color("reset")}' found`
+						.. "\n"
+				)
+
+				-- TODO: include a tip about similar commands available
+				self:showHelp()
+				Process.exit(1)
 			end
 		end,
 	})
