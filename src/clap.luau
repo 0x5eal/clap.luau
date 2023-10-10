@@ -236,7 +236,7 @@ function __assertHandler(tbl)
 end
 
 function __invokeHandler(args, type, handler: ((any | boolean | number | string) -> string?)?)
-	local val = trim(args[2]) or ""
+	local val = trim(args[2] or "")
 
 	local casted = match(type, {
 		string = function()
