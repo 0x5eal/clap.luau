@@ -1,5 +1,5 @@
 -- Recreation of `match` in Rust
-local match = function<R>(val, arms: { [any]: any }): R?
+local match = function<R>(val, arms: { [any]: any }): R
 	if arms[val] ~= nil then
 		if typeof(arms[val]) == "function" then
 			return arms[val]()
