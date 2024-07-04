@@ -80,6 +80,7 @@ function Command.Prototype.opt(self: Command, opt: Opt): Command
 	return self
 end
 
+-- FIXME: This seems to be totally broken right now
 function Command.Prototype.showHelp(self: Command)
 	print(`{self.name} {if self.description ~= nil then "- " .. self.description else ""}\n`)
 
@@ -234,6 +235,7 @@ function Command.Prototype.run(self: Command)
 		})
 	end
 
+	-- FIXME: Args aren't parsed correctly and don't work for show
 	parser.invokeEntrypoint(self, parsedArgs)
 end
 
